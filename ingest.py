@@ -1,62 +1,46 @@
-import requests
-from llama_index.core import Document
+"""
+Thin layer over `sources.py`.
 
-SEED_QUERIES = [
-    "persons background socioeconomic",
-    "biographical background outcomes",
-    "social origin life history",
-    "immigration background identity",
-    "cultural background educational attainment",
-]
+Historically this module held the OpenAlex client directly. After the
+data-source abstraction was added (proposal §3.2 sustainability constraint),
+`fetch_papers` and `invert_abstract` live in `sources.py`. This module now
+only owns the `Document` shape and the normalization to it.
+"""
+from dataclasses import dataclass, field
 
-def fetch_papers(query: str, per_page: int = 50) -> list[dict]:
-    """Snowball from a seed query via OpenAlex."""
-    url = "https://api.openalex.org/works"
-    params = {
-        "search": query,
-        "per-page": per_page,
-        "mailto": "your@email.com",  # polite pool
-        "select": "id,title,abstract_inverted_index,authorships,"
-                  "referenced_works,publication_year,doi,concepts",
-    }
-    r = requests.get(url, params=params)
-    r.raise_for_status()
-    return r.json().get("results", [])
+# Re-export the public source-layer API so existing imports keep working.
+from sources import fetch_papers, invert_abstract  # noqa: F401
 
 
-def invert_abstract(inv_index: dict | None) -> str:
-    """OpenAlex stores abstracts as inverted indexes — reconstruct the text."""
-    if not inv_index:
-        return ""
-    words = {}
-    for word, positions in inv_index.items():
-        for pos in positions:
-            words[pos] = word
-    return " ".join(words[i] for i in sorted(words))
+@dataclass
+class Document:
+    text: str
+    metadata: dict = field(default_factory=dict)
+    doc_id: str = ""
 
 
 def papers_to_documents(papers: list[dict]) -> list[Document]:
-    """Convert OpenAlex results into LlamaIndex Document objects."""
+    """Convert normalized paper dicts (from sources.fetch_papers) into Documents."""
     docs = []
     for p in papers:
-        abstract = invert_abstract(p.get("abstract_inverted_index"))
-        authors = [
-            a["author"]["display_name"]
-            for a in p.get("authorships", [])
-            if a.get("author")
-        ]
-        concepts = [c["display_name"] for c in p.get("concepts", [])]
-
+        if not p.get("id"):
+            continue
         docs.append(Document(
-            text=f"{p.get('title', '')}\n\n{abstract}",
+            text=f"{p.get('title','')}\n\n{p.get('abstract','')}",
             metadata={
+                # `openalex_id` is kept as the key name because the rest of the
+                # codebase (KB, graph) already uses it as the canonical paper id.
                 "openalex_id":      p["id"],
                 "title":            p.get("title", ""),
-                "year":             p.get("publication_year"),
+                "year":             p.get("year"),
                 "doi":              p.get("doi", ""),
-                "authors":          authors,
-                "concepts":         concepts,
+                "authors":          p.get("authors", []),
+                "concepts":         p.get("concepts", []),
+                "venue":            p.get("venue", ""),
+                "citations":        p.get("citations", 0),
                 "referenced_works": p.get("referenced_works", []),
+                "source":           p.get("source", "openalex"),
+                "reliability":      p.get("reliability", "unknown"),
             },
             doc_id=p["id"],
         ))

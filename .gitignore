@@ -1,0 +1,15 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+gap_report.json
+.DS_Store
+# legacy file-based KB (now in MongoDB)
+knowledge_base/
+.idea/
+.vscode/

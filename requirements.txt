@@ -1,0 +1,13 @@
+pillow>=11.0
+fastapi
+uvicorn[standard]
+python-dotenv
+requests
+google-genai
+groq
+mistralai
+numpy
+scikit-learn
+apscheduler
+pymongo[srv]
+neo4j
